@@ -2,30 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500;600;700&display=swap');
 
 @layer base {
   :root {
-    --background: 220 20% 7%;
+    --background: 222 25% 5%;
     --foreground: 210 20% 92%;
 
-    --card: 220 18% 10%;
+    --card: 220 20% 8%;
     --card-foreground: 210 20% 92%;
 
-    --popover: 220 18% 12%;
+    --popover: 220 20% 10%;
     --popover-foreground: 210 20% 92%;
 
-    --primary: 175 80% 45%;
-    --primary-foreground: 220 20% 7%;
+    --primary: 172 100% 48%;
+    --primary-foreground: 220 25% 5%;
 
-    --secondary: 220 15% 16%;
+    --secondary: 220 18% 13%;
     --secondary-foreground: 210 15% 75%;
 
-    --muted: 220 15% 14%;
-    --muted-foreground: 215 12% 50%;
+    --muted: 220 18% 11%;
+    --muted-foreground: 215 14% 46%;
 
-    --accent: 175 60% 30%;
-    --accent-foreground: 175 80% 85%;
+    --accent: 172 70% 28%;
+    --accent-foreground: 172 100% 85%;
 
     --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 100%;
@@ -33,79 +33,62 @@
     --warning: 38 92% 55%;
     --warning-foreground: 38 92% 15%;
 
-    --success: 152 70% 45%;
+    --success: 152 70% 42%;
     --success-foreground: 152 70% 10%;
 
-    --border: 220 15% 18%;
-    --input: 220 15% 16%;
-    --ring: 175 80% 45%;
+    --border: 220 18% 16%;
+    --input: 220 18% 14%;
+    --ring: 172 100% 48%;
 
     --radius: 0.75rem;
 
-    --chart-1: 175 80% 45%;
-    --chart-2: 260 60% 55%;
+    --chart-1: 172 100% 48%;
+    --chart-2: 265 65% 60%;
     --chart-3: 38 92% 55%;
-    --chart-4: 152 70% 45%;
+    --chart-4: 152 70% 42%;
     --chart-5: 0 72% 55%;
 
-    --gradient-primary: linear-gradient(135deg, hsl(175 80% 45%), hsl(190 75% 40%));
-    --gradient-card: linear-gradient(145deg, hsl(220 18% 11%), hsl(220 18% 9%));
-    --shadow-glow: 0 0 20px hsl(175 80% 45% / 0.15);
-    --shadow-card: 0 4px 24px hsl(0 0% 0% / 0.3);
+    --gradient-primary: linear-gradient(135deg, hsl(172 100% 48%), hsl(190 80% 40%));
+    --gradient-card: linear-gradient(145deg, hsl(220 20% 9%), hsl(220 20% 7%));
+    --shadow-glow: 0 0 24px hsl(172 100% 48% / 0.12);
+    --shadow-card: 0 4px 32px hsl(0 0% 0% / 0.4);
 
-    --sidebar-background: 220 20% 5%;
-    --sidebar-foreground: 210 15% 75%;
-    --sidebar-primary: 175 80% 45%;
-    --sidebar-primary-foreground: 220 20% 7%;
-    --sidebar-accent: 220 15% 12%;
+    --sidebar-background: 222 25% 4%;
+    --sidebar-foreground: 210 15% 65%;
+    --sidebar-primary: 172 100% 48%;
+    --sidebar-primary-foreground: 220 25% 5%;
+    --sidebar-accent: 220 18% 10%;
     --sidebar-accent-foreground: 210 20% 92%;
-    --sidebar-border: 220 15% 14%;
-    --sidebar-ring: 175 80% 45%;
+    --sidebar-border: 220 18% 12%;
+    --sidebar-ring: 172 100% 48%;
 
-    --font-display: 'Inter', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+    --font-display: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'Space Mono', monospace;
   }
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
+  * { @apply border-border; }
 
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-display);
+    background-image:
+      radial-gradient(ellipse at 20% 0%, hsl(172 100% 48% / 0.03) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 100%, hsl(265 65% 60% / 0.03) 0%, transparent 60%);
   }
 
-  /* Custom scrollbar */
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    background: hsl(var(--background));
-  }
-  ::-webkit-scrollbar-thumb {
-    background: hsl(var(--muted));
-    border-radius: 3px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted-foreground));
-  }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: hsl(var(--background)); }
+  ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
 }
 
 @layer utilities {
-  .font-mono {
-    font-family: var(--font-mono);
-  }
+  .font-mono { font-family: var(--font-mono); }
 
-  .glow-primary {
-    box-shadow: var(--shadow-glow);
-  }
-
-  .card-gradient {
-    background: var(--gradient-card);
-  }
+  .glow-primary { box-shadow: var(--shadow-glow); }
+  .card-gradient { background: var(--gradient-card); }
 
   .text-gradient {
     background: var(--gradient-primary);
@@ -114,21 +97,48 @@
     background-clip: text;
   }
 
+  /* Scanline texture sutil para el fondo */
+  .scanlines::after {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      hsl(0 0% 0% / 0.015) 2px,
+      hsl(0 0% 0% / 0.015) 4px
+    );
+  }
+
+  /* Badge monocromático estilo terminal */
+  .mono-badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  /* Borde izquierdo de acento en cards */
+  .card-accent-left {
+    border-left: 2px solid hsl(var(--primary));
+  }
+
   .animate-fade-in {
-    animation: fadeIn 0.4s ease-out;
+    animation: fadeIn 0.35s ease-out;
   }
-
   @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
 
-  .animate-count-up {
-    animation: countUp 0.6s ease-out;
+  .animate-pulse-dot {
+    animation: pulseDot 2s ease-in-out infinite;
   }
-
-  @keyframes countUp {
-    from { opacity: 0; transform: translateY(12px); }
-    to { opacity: 1; transform: translateY(0); }
+  @keyframes pulseDot {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.35; }
   }
 }
