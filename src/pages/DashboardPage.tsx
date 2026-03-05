@@ -14,11 +14,9 @@ export default function DashboardPage() {
     const totalInventoryValue = inventory.reduce((sum, i) => sum + i.Stock * i.PrecioVenta, 0);
     const totalUnits = inventory.reduce((sum, i) => sum + i.Stock, 0);
     const totalRevenue = sales.reduce((sum, s) => sum + s.Total, 0);
-    const totalCost = sales.reduce((sum, s) => {
-      const inv = inventory.find(i => i.SKU === s.SKU);
-      return sum + s.Cantidad * (inv?.PrecioCompra || 0);
-    }, 0);
-    const netMargin = totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue) * 100 : 0;
+    // Usar Utilidad real de API (liquidación TikTok / precio - costo SHEIN)
+    const totalUtilidad = sales.reduce((sum, s) => sum + (s.Utilidad || 0), 0);
+    const netMargin = totalRevenue > 0 ? (totalUtilidad / totalRevenue) * 100 : 0;
     const criticalItems = inventory.filter(i => i.Stock <= i.PuntoReorden).length;
 
     return { totalInventoryValue, totalUnits, totalRevenue, netMargin, criticalItems };
