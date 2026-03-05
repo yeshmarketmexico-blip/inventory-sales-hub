@@ -44,8 +44,39 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | null>(null);
 
-const INVENTORY_URL = 'https://script.google.com/macros/s/AKfycbweOy2ly59Fir1sT1lmWAaCL2oFXnxu6f2Ba9EFKHDfkYuOQVrQEG_NKFKfLgb6AqET/exec';
-const SALES_URL = 'https://script.google.com/macros/s/AKfycby4hH7qI9rkFh5yOZ1ZYD2NBF9fki4tlLP9Tjat1QnZO3sVJHxuCKZDvFfr7l4zACAw/exec';
+const INVENTORY_URL = 'https://script.google.com/macros/s/AKfycbweOy2ly59Fir1sT1lmWAaCL2oFXnxu6f2Ba9EFKHDfkYuOQVrQEG_NKFKfLgb6AqET/exec?action=inventario';
+const SALES_URL = 'https://script.google.com/macros/s/AKfycby4hH7qI9rkFh5yOZ1ZYD2NBF9fki4tlLP9Tjat1QnZO3sVJHxuCKZDvFfr7l4zACAw/exec?action=ordenes';
+
+function normalizeInventory(raw: any[]): InventoryItem[] {
+  return raw.map(r => ({
+    SKU: r.SKU || r.sku || '',
+    Producto: r.Producto || r.Nombre || r.nombre || '',
+    Stock: Number(r.Stock || r.stock || 0),
+    PrecioCompra: Number(r.PrecioCompra || r.CostoUnitario || r.costoUnitario || r.Costo || 0),
+    PrecioVenta: Number(r.PrecioVenta || r.PrecioMXN || r.precioMXN || r.Precio || 0),
+    Categoria: r.Categoria || r.categoria || r.Categoría || '',
+    PuntoReorden: Number(r.PuntoReorden || r.puntoReorden || r.Reorden || 10),
+    Marketplace: (r.Marketplace || r.Canal || r.canal || 'SHEIN').toString().toUpperCase(),
+  }));
+}
+
+function normalizeSales(raw: any[], inventory: InventoryItem[]): SaleItem[] {
+  return raw.map(r => {
+    const sku = r.SKU || r.sku || '';
+    const cantidad = Number(r.Cantidad || r.UnidadesVendidas || r.unidadesVendidas || 0);
+    const inv = inventory.find(i => i.SKU === sku);
+    const precio = Number(r.PrecioVenta || r.PrecioMXN || inv?.PrecioVenta || 0);
+    return {
+      SKU: sku,
+      Producto: r.Producto || r.Nombre || inv?.Producto || '',
+      Cantidad: cantidad,
+      PrecioVenta: precio,
+      Total: Number(r.Total || r.total || cantidad * precio),
+      Fecha: r.Fecha || r.fecha || '',
+      Marketplace: (r.Marketplace || r.Canal || r.canal || 'SHEIN').toString().toUpperCase(),
+    };
+  });
+}
 
 function mergeData(items: InventoryItem[]): InventoryItem[] {
   const map = new Map<string, InventoryItem>();
@@ -100,9 +131,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const invData = await invRes.json();
       const salesData = await salesRes.json();
       
-      // Normalize data - handle various response formats
-      const invItems: InventoryItem[] = Array.isArray(invData) ? invData : (invData.data || invData.items || []);
-      const saleItems: SaleItem[] = Array.isArray(salesData) ? salesData : (salesData.data || salesData.items || []);
+      console.log('[StockPulse] Raw inventory response:', invData);
+      console.log('[StockPulse] Raw sales response:', salesData);
+      
+      const rawInv = Array.isArray(invData) ? invData : (invData.data || invData.items || invData.inventario || []);
+      const rawSls = Array.isArray(salesData) ? salesData : (salesData.data || salesData.items || salesData.ordenes || []);
+      
+      const invItems = normalizeInventory(rawInv);
+      const saleItems = normalizeSales(rawSls, invItems);
+      
+      console.log('[StockPulse] Normalized inventory:', invItems.length, 'items');
+      console.log('[StockPulse] Normalized sales:', saleItems.length, 'records');
       
       setRawInventory(invItems);
       setRawSales(saleItems);
