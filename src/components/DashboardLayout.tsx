@@ -1,40 +1,46 @@
 import { ReactNode } from 'react';
 import { useLocation, Link } from 'react-router-dom';
-import { LayoutDashboard, Package, ShoppingCart, TrendingUp, RefreshCw } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingCart, TrendingUp, RefreshCw, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useData, Marketplace } from '@/hooks/useSheetData';
-import { Button } from '@/components/ui/button';
 import { DatePickerRange } from '@/components/DatePickerRange';
 import { cn } from '@/lib/utils';
 
 const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/inventario', label: 'Inventario', icon: Package },
-  { path: '/compras', label: 'Compras', icon: ShoppingCart },
-  { path: '/ventas', label: 'Ventas', icon: TrendingUp },
+  { path: '/',           label: 'Dashboard',  icon: LayoutDashboard, num: '01' },
+  { path: '/inventario', label: 'Inventario', icon: Package,          num: '02' },
+  { path: '/compras',    label: 'Compras',    icon: ShoppingCart,     num: '03' },
+  { path: '/ventas',     label: 'Ventas',     icon: TrendingUp,       num: '04' },
 ];
 
-const marketplaces: { value: Marketplace; label: string }[] = [
-  { value: 'SHEIN', label: 'SHEIN' },
-  { value: 'TIKTOK', label: 'TIKTOK' },
-  { value: 'COMBINADO', label: 'COMBINADO' },
+const marketplaces: { value: Marketplace; label: string; color: string }[] = [
+  { value: 'SHEIN',     label: 'SHEIN',     color: 'hsl(172 100% 48%)' },
+  { value: 'TIKTOK',    label: 'TIKTOK',    color: 'hsl(265 65% 65%)' },
+  { value: 'COMBINADO', label: 'COMBINADO', color: 'hsl(38 92% 55%)' },
 ];
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
-  const { marketplace, setMarketplace, dateRange, setDateRange, loading, refreshData } = useData();
+  const { marketplace, setMarketplace, dateRange, setDateRange, loading, refreshData, usingDemo } = useData();
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      {/* Sidebar */}
-      <aside className="hidden md:flex w-64 flex-col border-r border-border bg-sidebar">
-        <div className="p-6 border-b border-border">
-          <h1 className="text-xl font-bold text-gradient tracking-tight">
-            StockPulse
-          </h1>
-          <p className="text-xs text-muted-foreground mt-1">Gestión Unificada</p>
+
+      {/* ── Sidebar ─────────────────────────────────────────── */}
+      <aside className="hidden md:flex w-56 flex-col border-r border-border bg-sidebar">
+        {/* Logo */}
+        <div className="p-5 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Zap className="w-4 h-4 text-primary" />
+            <h1 className="font-mono text-sm font-bold tracking-widest text-primary uppercase">
+              Yesh<span className="text-foreground/40">·</span>Hub
+            </h1>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1 font-mono">v2.0 · {marketplace}</p>
         </div>
-        <nav className="flex-1 p-4 space-y-1">
+
+        {/* Nav */}
+        <nav className="flex-1 p-3 space-y-0.5">
           {navItems.map(item => {
             const active = location.pathname === item.path;
             return (
@@ -42,48 +48,61 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                 key={item.path}
                 to={item.path}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 group",
                   active
-                    ? "bg-primary/10 text-primary glow-primary"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    ? "bg-primary/10 text-primary border border-primary/20"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border border-transparent"
                 )}
               >
-                <item.icon className="w-4 h-4" />
-                {item.label}
+                <span className="font-mono text-[10px] text-muted-foreground group-hover:text-primary transition-colors">
+                  {item.num}
+                </span>
+                <item.icon className="w-3.5 h-3.5" />
+                <span className="font-medium text-xs tracking-wide">{item.label}</span>
+                {active && (
+                  <motion.div
+                    layoutId="activeNav"
+                    className="ml-auto w-1 h-4 rounded-full bg-primary"
+                  />
+                )}
               </Link>
             );
           })}
         </nav>
-        <div className="p-4 border-t border-border">
-          <div className="text-xs text-muted-foreground">
-            {loading ? (
-              <span className="flex items-center gap-2">
-                <RefreshCw className="w-3 h-3 animate-spin" /> Cargando...
-              </span>
-            ) : (
-              <span className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-success" /> Datos sincronizados
-              </span>
-            )}
+
+        {/* Status */}
+        <div className="p-4 border-t border-border space-y-2">
+          {usingDemo && (
+            <div className="font-mono text-[9px] text-warning/70 bg-warning/5 border border-warning/20 rounded px-2 py-1.5 tracking-wider">
+              ⚠ MODO DEMO
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <span className={cn(
+              "w-1.5 h-1.5 rounded-full animate-pulse-dot",
+              loading ? "bg-warning" : "bg-success"
+            )} />
+            <span className="font-mono text-[9px] text-muted-foreground tracking-wider uppercase">
+              {loading ? 'Sincronizando...' : 'Datos en vivo'}
+            </span>
           </div>
         </div>
       </aside>
 
-      {/* Main */}
+      {/* ── Main ────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col overflow-hidden">
+
         {/* Header */}
-        <header className="border-b border-border bg-card/50 backdrop-blur-sm px-4 md:px-6 py-3">
+        <header className="border-b border-border bg-card/60 backdrop-blur-md px-4 md:px-5 py-2.5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            {/* Mobile nav */}
+
+            {/* Mobile nav icons */}
             <div className="flex md:hidden gap-1">
               {navItems.map(item => {
                 const active = location.pathname === item.path;
                 return (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    className={cn(
-                      "p-2 rounded-lg transition-colors",
+                  <Link key={item.path} to={item.path}
+                    className={cn("p-2 rounded-lg transition-colors",
                       active ? "bg-primary/10 text-primary" : "text-muted-foreground"
                     )}
                   >
@@ -94,46 +113,46 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             </div>
 
             {/* Marketplace selector */}
-            <div className="flex items-center gap-1 bg-secondary rounded-lg p-1">
+            <div className="flex items-center gap-1 bg-secondary/80 rounded-lg p-1 border border-border">
               {marketplaces.map(mp => (
                 <button
                   key={mp.value}
                   onClick={() => setMarketplace(mp.value)}
                   className={cn(
-                    "px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200",
+                    "px-3 py-1.5 rounded-md font-mono text-[10px] font-bold tracking-widest transition-all duration-200 uppercase",
                     marketplace === mp.value
                       ? "bg-primary text-primary-foreground shadow-md"
-                      : "text-secondary-foreground hover:text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
                   )}
+                  style={marketplace === mp.value ? { background: mp.color, color: '#05080f' } : {}}
                 >
                   {mp.label}
                 </button>
               ))}
             </div>
 
+            {/* Right: date + refresh */}
             <div className="flex items-center gap-2">
               <DatePickerRange dateRange={dateRange} onDateRangeChange={setDateRange} />
-              <Button
-                variant="ghost"
-                size="icon"
+              <button
                 onClick={refreshData}
-                className="text-muted-foreground hover:text-primary"
+                className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all border border-transparent hover:border-primary/20"
               >
-                <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
-              </Button>
+                <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+              </button>
             </div>
           </div>
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-auto p-4 md:p-6">
+        <main className="flex-1 overflow-auto p-4 md:p-5">
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname + marketplace}
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.3 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
             >
               {children}
             </motion.div>
