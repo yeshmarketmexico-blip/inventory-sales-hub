@@ -110,6 +110,63 @@ export default function SalesPage() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* Sales Transaction Table */}
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="p-4 border-b border-border">
+          <h3 className="text-sm font-semibold text-foreground">Detalle de Órdenes ({sales.length})</h3>
+          <p className="text-xs text-muted-foreground">Lista completa de ventas — {marketplace}</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-secondary/50">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">ID Orden</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Fecha</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Producto</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">SKU</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Cant.</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Liquidación</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Costo</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Utilidad</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Margen</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Canal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sales
+                .slice()
+                .sort((a, b) => b.Fecha.localeCompare(a.Fecha))
+                .map((sale, idx) => (
+                <tr key={`${sale.IDOrden}-${sale.SKU}-${idx}`} className="border-b border-border hover:bg-secondary/30 transition-colors">
+                  <td className="px-4 py-3 font-mono text-xs text-primary">{sale.IDOrden}</td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{sale.Fecha}</td>
+                  <td className="px-4 py-3 font-medium text-foreground max-w-xs truncate" title={sale.Producto}>
+                    {sale.Producto.length > 50 ? sale.Producto.substring(0, 50) + '…' : sale.Producto}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{sale.SKU}</td>
+                  <td className="px-4 py-3 text-right font-mono text-foreground">{sale.Cantidad}</td>
+                  <td className="px-4 py-3 text-right font-mono text-foreground">{fmt(sale.Total)}</td>
+                  <td className="px-4 py-3 text-right font-mono text-muted-foreground">{fmt(sale.Costo)}</td>
+                  <td className="px-4 py-3 text-right font-mono">
+                    <span className={sale.Utilidad >= 0 ? 'text-success' : 'text-destructive'}>
+                      {fmt(sale.Utilidad)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono text-foreground">{sale.Margen.toFixed(1)}%</td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${
+                      sale.Marketplace === 'SHEIN' ? 'bg-primary/20 text-primary' : 'bg-accent/20 text-accent-foreground'
+                    }`}>
+                      {sale.Marketplace}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
