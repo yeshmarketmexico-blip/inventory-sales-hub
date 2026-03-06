@@ -1,4 +1,4 @@
-  import { useState, useEffect, useCallback, createContext, useContext, ReactNode } from 'react';
+ import { useState, useEffect, useCallback, createContext, useContext, ReactNode } from 'react';
 
 export type Marketplace = 'SHEIN' | 'TIKTOK' | 'COMBINADO';
 export interface DateRange { from: Date | undefined; to: Date | undefined; }
@@ -335,3 +335,9 @@ export function useSheetData() {
   if (!ctx) throw new Error('useSheetData must be used inside DataProvider');
   return ctx;
 }
+
+// Alias de compatibilidad con versiones anteriores
+export const useData = useSheetData;
+
+// Alias para compatibilidad con DashboardLayout
+export const useData = useSheetData;
