@@ -400,8 +400,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       sheinInv = tiktokInv.map(i => ({ ...i, Marketplace: 'SHEIN' }));
     if (tiktokInv.length === 0 && sheinInv.length > 0)
       tiktokInv = sheinInv.map(i => ({ ...i, Marketplace: 'TIKTOK' }));
-    if (sheinSales.length === 0 && sheinInv.length > 0)
-      sheinSales = generateDemoSales(sheinInv, 'SHEIN');
 
     setRawSheinInv(sheinInv); setRawTiktokInv(tiktokInv);
     setRawSheinSales(sheinSales); setRawTiktokSales(tiktokSales);
