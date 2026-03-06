@@ -146,7 +146,27 @@ function isVenta(estado: string): boolean {
   return s.includes('ENTREGADA') || s.includes('ENVIADA') || s.includes('EN CAMINO');
 }
 
-function normalizeOrders(raw: any[], mp: string): SaleItem[] {
+// Build lookup: ID Producto → SKU (numeric) from raw inventory data
+function buildIdToSkuMap(rawInv: any[]): Map<string, string> {
+  const map = new Map<string, string>();
+  if (!Array.isArray(rawInv)) return map;
+  rawInv.forEach(r => {
+    const idProducto = pickString(r, ['ID Producto', 'ID Producto (SKU SHEIN)', 'ID Producto(SKU SHEIN)']);
+    const sku = pickString(r, ['SKU', 'SKU Interno']);
+    if (idProducto && sku) {
+      map.set(String(idProducto), String(sku));
+    }
+  });
+  return map;
+}
+
+function isInvalidSku(sku: string): boolean {
+  if (!sku) return true;
+  const lower = sku.toLowerCase();
+  return lower === '0' || lower === 'predeterminado' || lower === 'por defecto' || lower === 'default';
+}
+
+function normalizeOrders(raw: any[], mp: string, idToSkuMap?: Map<string, string>): SaleItem[] {
   if (!Array.isArray(raw)) return [];
   const dedup = new Set<string>();
   return raw
@@ -164,9 +184,23 @@ function normalizeOrders(raw: any[], mp: string): SaleItem[] {
       const margen = parseNum(pickValue(r, ['Margen %', 'Margen'])) || (liq > 0 ? (util / liq) * 100 : 0);
       const qty = Math.max(1, parseNum(pickValue(r, ['Cantidad', 'Qty', 'QTY'])));
       const producto = pickString(r, ['Producto (Nombre)', 'Producto', 'Nombre']);
-      const sku = pickString(r, ['SKU Interno', 'SKU', 'SKU ID']);
       const fecha = parseDate(pickValue(r, ['Fecha']));
       const idOrden = pickString(r, ['ID Orden', 'Order ID', 'ID']);
+
+      // SKU resolution: try SKU Interno first, then SKU, then resolve SKU ID via inventory map
+      let sku = pickString(r, ['SKU Interno']);
+      if (isInvalidSku(sku)) {
+        sku = pickString(r, ['SKU']);
+      }
+      if (isInvalidSku(sku)) {
+        const skuId = pickString(r, ['SKU ID']);
+        if (skuId && idToSkuMap) {
+          sku = idToSkuMap.get(String(skuId)) || skuId;
+        } else if (skuId) {
+          sku = skuId;
+        }
+      }
+
       return {
         IDOrden: idOrden, SKU: sku, Producto: producto,
         Cantidad: qty, PrecioVenta: liq, Total: liq, Costo: costo,
