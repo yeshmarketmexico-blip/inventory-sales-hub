@@ -1,6 +1,40 @@
-@@ -35,129 +35,228 @@ const DataContext = createContext<DataContextType | null>(null);
-// URL_A → 839 filas, Estado: COMPLETED/DELIVERED  → TikTok
-// URL_B → 287 filas, Estado: 🚚 Enviada           → SHEIN
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+
+// ─────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────
+export type Marketplace = 'SHEIN' | 'TIKTOK' | 'COMBINADO';
+
+export interface InventoryItem {
+  SKU: string; Producto: string; Stock: number;
+  PrecioCompra: number; PrecioVenta: number;
+  Categoria: string; PuntoReorden: number;
+  Marketplace: string; MargenPct: number;
+  GananciaUnit: number; ValorTotal: number; Estado: string;
+}
+
+export interface SaleItem {
+  IDOrden: string; SKU: string; Producto: string;
+  Cantidad: number; PrecioVenta: number; Total: number;
+  Costo: number; Utilidad: number; Margen: number;
+  Fecha: string; Marketplace: string; Estado: string;
+}
+
+export interface DateRange { from: Date | undefined; to: Date | undefined; }
+
+interface DataContextType {
+  inventory: InventoryItem[]; sales: SaleItem[];
+  marketplace: Marketplace; setMarketplace: (m: Marketplace) => void;
+  dateRange: DateRange; setDateRange: (d: DateRange) => void;
+  loading: boolean; error: string | null; usingDemo: boolean;
+  refreshData: () => void;
+}
+
+const DataContext = createContext<DataContextType | null>(null);
+
+// ─────────────────────────────────────────────────────────────
+// ENDPOINTS
+// URL_A → TikTok    URL_B → SHEIN
 // ─────────────────────────────────────────────────────────────
 const TIKTOK_BASE = 'https://script.google.com/macros/s/AKfycbweOy2ly59Fir1sT1lmWAaCL2oFXnxu6f2Ba9EFKHDfkYuOQVrQEG_NKFKfLgb6AqET/exec';
 const SHEIN_BASE  = 'https://script.google.com/macros/s/AKfycby4hH7qI9rkFh5yOZ1ZYD2NBF9fki4tlLP9Tjat1QnZO3sVJHxuCKZDvFfr7l4zACAw/exec';
@@ -24,19 +58,13 @@ function inferCategoria(n: string): string {
 
 function parseNum(v: any): number {
   if (v === null || v === undefined || v === '' || v === 'PENDIENTE') return 0;
-  if (typeof v === 'number') return v;
-  return parseFloat(String(v).replace(/[$,\s]/g, '')) || 0;
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
-
   const raw = String(v).trim();
   if (!raw) return 0;
-
   const cleaned = raw.replace(/[^\d,.-]/g, '');
   if (!cleaned) return 0;
-
   const hasComma = cleaned.includes(',');
   const hasDot = cleaned.includes('.');
-
   let normalized = cleaned;
   if (hasComma && hasDot) {
     const lastComma = cleaned.lastIndexOf(',');
@@ -48,17 +76,18 @@ function parseNum(v: any): number {
   } else if (hasComma && !hasDot) {
     normalized = cleaned.replace(/,/g, '.');
   }
-
   return parseFloat(normalized) || 0;
 }
 
 function normalizeText(v: any): string {
-  return String(v || '')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9_ ]+/g, ' ')
-    .trim();
+  return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9_ ]+/g, ' ').trim();
+}
+
+function pickValue(row: Record<string, any>, keys: string[]): any {
+  for (const key of keys) {
+    if (row[key] !== undefined && row[key] !== null && row[key] !== '') return row[key];
+  }
+  return undefined;
 }
 
 function pickString(row: Record<string, any>, keys: string[]): string {
@@ -68,43 +97,26 @@ function pickString(row: Record<string, any>, keys: string[]): string {
 
 function parseDate(v: any): string {
   if (!v) return '';
-  const s = String(v);
   const s = String(v).trim();
-
   // DD/MM/YYYY
   const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
-
   // YYYY-MM-DD HH:mm:ss
   const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T].*)?$/);
   if (m2) return `${m2[1]}-${m2[2]}-${m2[3]}`;
-
-  // ISO con T
-  return s.split('T')[0];
   return s.split('T')[0].split(' ')[0];
 }
 
 // ─────────────────────────────────────────────────────────────
-// NORMALIZAR INVENTARIO
-// Cols: ID Producto, Nombre, SKU, Stock, Precio MXN,
-//       ✏️ Costo Unitario, Valor Total, Ganancia Unit., Margen %, Estado
+// NORMALIZE INVENTORY
 // ─────────────────────────────────────────────────────────────
 function normalizeInventory(raw: any[], mp: string): InventoryItem[] {
+  if (!Array.isArray(raw)) return [];
   return raw.filter(r => {
-    const id     = String(r['ID Producto'] || '').trim();
-    const nombre = String(r['Nombre'] || '').trim();
     const id = pickString(r, ['ID Producto', 'ID Producto (SKU SHEIN)', 'ID Producto(SKU SHEIN)', 'ID']);
     const nombre = pickString(r, ['Nombre', 'Producto (Nombre)', 'Producto']);
     return id && id !== 'TOTALES' && nombre && nombre !== 'TOTALES';
   }).map(r => {
-    const stock      = parseNum(r['Stock']);
-    const precio     = parseNum(r['Precio MXN']);
-    const costo      = parseNum(r['✏️ Costo Unitario']);
-    const margen     = parseNum(r['Margen %']);
-    const ganancia   = parseNum(r['Ganancia Unit.']);
-    const valorTotal = parseNum(r['Valor Total']) || stock * precio;
-    const estado     = String(r['Estado'] || (stock === 0 ? '🔴 AGOTADO' : stock < 10 ? '🟡 BAJO' : '🟢 OK'));
-    const skuRaw = String(r['SKU'] ?? r['ID Producto'] ?? '').trim();
     const stock = parseNum(pickValue(r, ['Stock', 'Stock Actual']));
     const precio = parseNum(pickValue(r, ['Precio MXN', 'Precio']));
     const costo = parseNum(pickValue(r, ['✏️ Costo Unitario', 'Costo Unitario', 'Costo']));
@@ -115,10 +127,8 @@ function normalizeInventory(raw: any[], mp: string): InventoryItem[] {
     const skuRaw = pickString(r, ['SKU', 'SKU Interno', 'ID Producto', 'ID Producto (SKU SHEIN)']);
     const producto = pickString(r, ['Nombre', 'Producto (Nombre)', 'Producto']);
     return {
-      SKU: skuRaw, Producto: String(r['Nombre'] || ''),
       SKU: skuRaw, Producto: producto,
       Stock: stock, PrecioCompra: costo, PrecioVenta: precio,
-      Categoria: inferCategoria(String(r['Nombre'] || '')),
       Categoria: inferCategoria(producto),
       PuntoReorden: 5, Marketplace: mp, MargenPct: margen,
       GananciaUnit: ganancia, ValorTotal: valorTotal, Estado: estado,
@@ -127,87 +137,27 @@ function normalizeInventory(raw: any[], mp: string): InventoryItem[] {
 }
 
 // ─────────────────────────────────────────────────────────────
-// NORMALIZAR ÓRDENES
-// TikTok: Estado = COMPLETED | DELIVERED  | cols: Producto, SKU
-// SHEIN:  Estado = 🚚 Enviada | ✅ Entregada | cols: "Producto (Nombre)", "SKU Interno"
+// NORMALIZE ORDERS
 // ─────────────────────────────────────────────────────────────
 function isVenta(estado: string): boolean {
-  const s = estado.toUpperCase();
-  if (s === 'COMPLETED' || s === 'DELIVERED') return true;
-  if (s.includes('ENTREGADA') || s.includes('ENVIADA') || s.includes('EN CAMINO')) return true;
-  return false;
   const s = normalizeText(estado);
   const directStates = new Set(['COMPLETED', 'DELIVERED', 'SHIPPED']);
   if (directStates.has(s)) return true;
-  return s.includes('ENTREGADA') || s.includes('ENVIADA');
-}
-
-function pickValue(row: Record<string, any>, keys: string[]): any {
-  for (const key of keys) {
-    if (row[key] !== undefined && row[key] !== null && row[key] !== '') return row[key];
-  }
-  return undefined;
-}
-
-function detectInventoryType(raw: any[]): 'SHEIN' | 'TIKTOK' | 'UNKNOWN' {
-  if (!Array.isArray(raw) || raw.length === 0) return 'UNKNOWN';
-
-  const sample = raw.slice(0, Math.min(15, raw.length));
-  let sheinScore = 0;
-  let tiktokScore = 0;
-
-  sample.forEach(r => {
-    if (r['SKU Interno'] || r['ID Producto (SKU SHEIN)']) sheinScore += 2;
-    if (r['SKU'] || r['ID Producto']) tiktokScore += 1;
-  });
-
-  if (sheinScore > tiktokScore) return 'SHEIN';
-  if (tiktokScore > sheinScore) return 'TIKTOK';
-  return 'UNKNOWN';
-}
-
-function detectOrdersType(raw: any[]): 'SHEIN' | 'TIKTOK' | 'UNKNOWN' {
-  if (!Array.isArray(raw) || raw.length === 0) return 'UNKNOWN';
-
-  const sample = raw.slice(0, Math.min(30, raw.length));
-  let sheinScore = 0;
-  let tiktokScore = 0;
-
-  sample.forEach(r => {
-    const estado = normalizeText(r['Estado']);
-    if (estado.includes('ENVIADA') || estado.includes('ENTREGADA')) sheinScore += 2;
-    if (estado === 'COMPLETED' || estado === 'DELIVERED' || estado === 'AWAITING_SHIPMENT' || estado === 'ON_HOLD' || estado === 'UNPAID') tiktokScore += 2;
-    if (r['SKU Interno']) sheinScore += 1;
-    if (r['SKU ID']) tiktokScore += 1;
-  });
-
-  if (sheinScore > tiktokScore) return 'SHEIN';
-  if (tiktokScore > sheinScore) return 'TIKTOK';
-  return 'UNKNOWN';
+  return s.includes('ENTREGADA') || s.includes('ENVIADA') || s.includes('EN CAMINO');
 }
 
 function normalizeOrders(raw: any[], mp: string): SaleItem[] {
   if (!Array.isArray(raw)) return [];
-
   const dedup = new Set<string>();
   return raw
     .filter(r => {
-      if (!r['ID Orden']) return false;
       const orderId = pickString(r, ['ID Orden', 'Order ID', 'ID']);
       if (!orderId) return false;
       if (!isVenta(String(r['Estado'] || ''))) return false;
-      return parseNum(r['💚 LIQUIDACION']) > 0;
       const liq = parseNum(pickValue(r, ['💚 LIQUIDACION', '💚 Liquidación', 'Liquidación', 'Liquidacion', 'Total']));
       return liq > 0;
     })
     .map(r => {
-      const liq     = parseNum(r['💚 LIQUIDACION']);
-      const costo   = parseNum(r['Costo Mercancía']);
-      const util    = parseNum(r['💰 UTILIDAD REAL']) || (liq - costo);
-      const margen  = parseNum(r['Margen %']) || (liq > 0 ? (util / liq) * 100 : 0);
-      const qty     = Math.max(1, parseNum(r['Cantidad']));
-      const producto = String(r['Producto (Nombre)'] || r['Producto'] || '');
-      const sku      = String(r['SKU Interno'] || r['SKU'] || r['SKU ID'] || '');
       const liq = parseNum(pickValue(r, ['💚 LIQUIDACION', '💚 Liquidación', 'Liquidación', 'Liquidacion', 'Total']));
       const costo = parseNum(pickValue(r, ['Costo Mercancía', 'Costo Mercancia', 'Costo']));
       const util = parseNum(pickValue(r, ['💰 UTILIDAD REAL', 'Utilidad Real', 'Utilidad'])) || (liq - costo);
@@ -215,18 +165,15 @@ function normalizeOrders(raw: any[], mp: string): SaleItem[] {
       const qty = Math.max(1, parseNum(pickValue(r, ['Cantidad', 'Qty', 'QTY'])));
       const producto = pickString(r, ['Producto (Nombre)', 'Producto', 'Nombre']);
       const sku = pickString(r, ['SKU Interno', 'SKU', 'SKU ID']);
-      const fecha = parseDate(r['Fecha']);
+      const fecha = parseDate(pickValue(r, ['Fecha']));
       const idOrden = pickString(r, ['ID Orden', 'Order ID', 'ID']);
       return {
-        IDOrden: String(r['ID Orden']), SKU: sku, Producto: producto,
         IDOrden: idOrden, SKU: sku, Producto: producto,
         Cantidad: qty, PrecioVenta: liq, Total: liq, Costo: costo,
-        Utilidad: util, Margen: margen, Fecha: parseDate(r['Fecha']),
         Utilidad: util, Margen: margen, Fecha: fecha,
         Marketplace: mp, Estado: String(r['Estado'] || ''),
       };
     })
-    .filter(s => s.Total > 0);
     .filter(sale => {
       if (sale.Total <= 0) return false;
       const key = `${sale.IDOrden}|${sale.SKU}|${sale.Fecha}`;
@@ -237,13 +184,45 @@ function normalizeOrders(raw: any[], mp: string): SaleItem[] {
 }
 
 // ─────────────────────────────────────────────────────────────
+// DETECT & SWAP (auto-detect if endpoints return swapped data)
+// ─────────────────────────────────────────────────────────────
+function detectInventoryType(raw: any[]): 'SHEIN' | 'TIKTOK' | 'UNKNOWN' {
+  if (!Array.isArray(raw) || raw.length === 0) return 'UNKNOWN';
+  const sample = raw.slice(0, Math.min(15, raw.length));
+  let sheinScore = 0, tiktokScore = 0;
+  sample.forEach(r => {
+    if (r['SKU Interno'] || r['ID Producto (SKU SHEIN)']) sheinScore += 2;
+    if (r['SKU'] || r['ID Producto']) tiktokScore += 1;
+  });
+  if (sheinScore > tiktokScore) return 'SHEIN';
+  if (tiktokScore > sheinScore) return 'TIKTOK';
+  return 'UNKNOWN';
+}
+
+function detectOrdersType(raw: any[]): 'SHEIN' | 'TIKTOK' | 'UNKNOWN' {
+  if (!Array.isArray(raw) || raw.length === 0) return 'UNKNOWN';
+  const sample = raw.slice(0, Math.min(30, raw.length));
+  let sheinScore = 0, tiktokScore = 0;
+  sample.forEach(r => {
+    const estado = normalizeText(r['Estado']);
+    if (estado.includes('ENVIADA') || estado.includes('ENTREGADA')) sheinScore += 2;
+    if (estado === 'COMPLETED' || estado === 'DELIVERED' || estado === 'AWAITING_SHIPMENT') tiktokScore += 2;
+    if (r['SKU Interno']) sheinScore += 1;
+    if (r['SKU ID']) tiktokScore += 1;
+  });
+  if (sheinScore > tiktokScore) return 'SHEIN';
+  if (tiktokScore > sheinScore) return 'TIKTOK';
+  return 'UNKNOWN';
+}
+
+// ─────────────────────────────────────────────────────────────
 // MERGE
 // ─────────────────────────────────────────────────────────────
 function mergeInventory(items: InventoryItem[]): InventoryItem[] {
   const map = new Map<string, InventoryItem>();
   items.forEach(item => {
     const key = String(item.SKU || item.Producto);
-    const ex  = map.get(key);
+    const ex = map.get(key);
     if (ex) { ex.Stock += item.Stock; ex.ValorTotal += item.ValorTotal; }
     else map.set(key, { ...item, Marketplace: 'COMBINADO' });
   });
@@ -259,7 +238,32 @@ function generateDemoInventory(mp: string): InventoryItem[] {
     { SKU:'783214469800', Producto:'Tapete Yoga 4MM Verde Agua', Stock:41, PrecioCompra:42, PrecioVenta:99, Categoria:'Yoga & Fitness', PuntoReorden:5, Marketplace:mp, MargenPct:57.6, GananciaUnit:57, ValorTotal:4059, Estado:'🟢 OK' },
     { SKU:'664554605250', Producto:'Tapete Yoga 4MM Rosa', Stock:75, PrecioCompra:42, PrecioVenta:99, Categoria:'Yoga & Fitness', PuntoReorden:5, Marketplace:mp, MargenPct:57.6, GananciaUnit:57, ValorTotal:7425, Estado:'🟢 OK' },
     { SKU:'749460136637', Producto:'Papel Bond Blanco 500H Oficio', Stock:99, PrecioCompra:84, PrecioVenta:149, Categoria:'Papelería', PuntoReorden:5, Marketplace:mp, MargenPct:43.6, GananciaUnit:65, ValorTotal:14751, Estado:'🟢 OK' },
-@@ -185,102 +284,121 @@ function generateDemoSales(inventory: InventoryItem[], mp: string): SaleItem[] {
+    { SKU:'123456789012', Producto:'Caja Plástica Apilable 20L', Stock:3, PrecioCompra:35, PrecioVenta:79, Categoria:'Almacenamiento', PuntoReorden:5, Marketplace:mp, MargenPct:55.7, GananciaUnit:44, ValorTotal:237, Estado:'🔴 AGOTADO' },
+    { SKU:'987654321098', Producto:'Mancuerna 5kg Par', Stock:8, PrecioCompra:120, PrecioVenta:249, Categoria:'Pesas', PuntoReorden:5, Marketplace:mp, MargenPct:51.8, GananciaUnit:129, ValorTotal:1992, Estado:'🟡 BAJO' },
+    { SKU:'456789012345', Producto:'Tabla Natación Espuma', Stock:15, PrecioCompra:45, PrecioVenta:99, Categoria:'Natación', PuntoReorden:5, Marketplace:mp, MargenPct:54.5, GananciaUnit:54, ValorTotal:1485, Estado:'🟢 OK' },
+    { SKU:'321098765432', Producto:'Bote Basura 50L Pedal', Stock:2, PrecioCompra:89, PrecioVenta:179, Categoria:'Hogar', PuntoReorden:5, Marketplace:mp, MargenPct:50.3, GananciaUnit:90, ValorTotal:358, Estado:'🔴 AGOTADO' },
+  ];
+}
+
+function generateDemoSales(inventory: InventoryItem[], mp: string): SaleItem[] {
+  const sales: SaleItem[] = [];
+  const today = new Date();
+  for (let d = 0; d < 60; d++) {
+    const date = new Date(today);
+    date.setDate(date.getDate() - d);
+    const dateStr = date.toISOString().split('T')[0];
+    const items = inventory.slice(0, Math.min(5, inventory.length));
+    items.forEach(item => {
+      if (Math.random() < 0.4) return;
+      const qty = Math.ceil(Math.random() * 3);
+      const total = qty * item.PrecioVenta;
+      const costo = qty * item.PrecioCompra;
+      sales.push({
+        IDOrden: `DEMO-${d}-${item.SKU}`, SKU: item.SKU, Producto: item.Producto,
+        Cantidad: qty, PrecioVenta: item.PrecioVenta, Total: total, Costo: costo,
+        Utilidad: total - costo, Margen: total > 0 ? ((total - costo) / total) * 100 : 0,
+        Fecha: dateStr, Marketplace: mp, Estado: 'COMPLETED',
+      });
     });
   }
   return sales;
@@ -272,89 +276,74 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [marketplace, setMarketplace] = useState<Marketplace>('TIKTOK');
   const [dateRange, setDateRange] = useState<DateRange>({
     from: new Date(new Date().setDate(new Date().getDate() - 90)),
-    to:   new Date(),
+    to: new Date(),
   });
-  const [rawSheinInv,    setRawSheinInv]    = useState<InventoryItem[]>([]);
-  const [rawTiktokInv,   setRawTiktokInv]   = useState<InventoryItem[]>([]);
-  const [rawSheinSales,  setRawSheinSales]  = useState<SaleItem[]>([]);
+  const [rawSheinInv, setRawSheinInv] = useState<InventoryItem[]>([]);
+  const [rawTiktokInv, setRawTiktokInv] = useState<InventoryItem[]>([]);
+  const [rawSheinSales, setRawSheinSales] = useState<SaleItem[]>([]);
   const [rawTiktokSales, setRawTiktokSales] = useState<SaleItem[]>([]);
-  const [hasTiktokData,  setHasTiktokData]  = useState(false);
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState<string | null>(null);
+  const [hasTiktokData, setHasTiktokData] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [usingDemo, setUsingDemo] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true); setError(null); setUsingDemo(false);
     setHasTiktokData(false);
-    let sheinInv: InventoryItem[] = [], tiktokInv: InventoryItem[] = [];
-    let sheinSales: SaleItem[] = [], tiktokSales: SaleItem[] = [];
-    let anySuccess = false;
 
-    let rawTiktokInv: any[] = [];
-    let rawSheinInv: any[] = [];
-    let rawTiktokOrders: any[] = [];
-    let rawSheinOrders: any[] = [];
+    let rawTiktokInvArr: any[] = [];
+    let rawSheinInvArr: any[] = [];
+    let rawTiktokOrdersArr: any[] = [];
+    let rawSheinOrdersArr: any[] = [];
 
     try {
       const r = await fetch(`${TIKTOK_BASE}?action=inventario`);
       const d = await r.json();
-      tiktokInv = normalizeInventory(Array.isArray(d) ? d : (d.data || []), 'TIKTOK');
-      if (tiktokInv.length > 0) anySuccess = true;
-      console.log('[YM] TikTok inv:', tiktokInv.length);
-      rawTiktokInv = Array.isArray(d) ? d : (d.data || []);
-      console.log('[YM] TikTok inv raw:', rawTiktokInv.length);
+      rawTiktokInvArr = Array.isArray(d) ? d : (d.data || []);
+      console.log('[YM] TikTok inv raw:', rawTiktokInvArr.length, rawTiktokInvArr[0]);
     } catch(e) { console.warn('[YM] TikTok inv error:', e); }
 
     try {
       const r = await fetch(`${TIKTOK_BASE}?action=ordenes`);
       const d = await r.json();
-      const raw = Array.isArray(d) ? d : (d.data || []);
-      tiktokSales = normalizeOrders(raw, 'TIKTOK');
-      if (tiktokSales.length > 0) setHasTiktokData(true);
-      console.log('[YM] TikTok órdenes raw:', raw.length, '→ ventas:', tiktokSales.length);
-      rawTiktokOrders = Array.isArray(d) ? d : (d.data || []);
-      console.log('[YM] TikTok órdenes raw:', rawTiktokOrders.length);
+      rawTiktokOrdersArr = Array.isArray(d) ? d : (d.data || []);
+      console.log('[YM] TikTok órdenes raw:', rawTiktokOrdersArr.length, rawTiktokOrdersArr[0]);
     } catch(e) { console.warn('[YM] TikTok ordenes error:', e); }
 
     try {
       const r = await fetch(`${SHEIN_BASE}?action=inventario`);
       const d = await r.json();
-      sheinInv = normalizeInventory(Array.isArray(d) ? d : (d.data || []), 'SHEIN');
-      if (sheinInv.length > 0) anySuccess = true;
-      console.log('[YM] SHEIN inv:', sheinInv.length);
-      rawSheinInv = Array.isArray(d) ? d : (d.data || []);
-      console.log('[YM] SHEIN inv raw:', rawSheinInv.length);
+      rawSheinInvArr = Array.isArray(d) ? d : (d.data || []);
+      console.log('[YM] SHEIN inv raw:', rawSheinInvArr.length, rawSheinInvArr[0]);
     } catch(e) { console.warn('[YM] SHEIN inv error:', e); }
 
     try {
       const r = await fetch(`${SHEIN_BASE}?action=ordenes`);
       const d = await r.json();
-      const raw = Array.isArray(d) ? d : (d.data || []);
-      sheinSales = normalizeOrders(raw, 'SHEIN');
-      console.log('[YM] SHEIN órdenes raw:', raw.length, '→ ventas:', sheinSales.length);
-      rawSheinOrders = Array.isArray(d) ? d : (d.data || []);
-      console.log('[YM] SHEIN órdenes raw:', rawSheinOrders.length);
+      rawSheinOrdersArr = Array.isArray(d) ? d : (d.data || []);
+      console.log('[YM] SHEIN órdenes raw:', rawSheinOrdersArr.length, rawSheinOrdersArr[0]);
     } catch(e) { console.warn('[YM] SHEIN ordenes error:', e); }
 
-    const tiktokInvType = detectInventoryType(rawTiktokInv);
-    const sheinInvType = detectInventoryType(rawSheinInv);
-    const tiktokOrdersType = detectOrdersType(rawTiktokOrders);
-    const sheinOrdersType = detectOrdersType(rawSheinOrders);
+    // Auto-detect if data is swapped between endpoints
+    const tiktokInvType = detectInventoryType(rawTiktokInvArr);
+    const sheinInvType = detectInventoryType(rawSheinInvArr);
+    const tiktokOrdersType = detectOrdersType(rawTiktokOrdersArr);
+    const sheinOrdersType = detectOrdersType(rawSheinOrdersArr);
 
     const shouldSwapInv = tiktokInvType === 'SHEIN' && sheinInvType === 'TIKTOK';
     const shouldSwapOrders = tiktokOrdersType === 'SHEIN' && sheinOrdersType === 'TIKTOK';
 
-    const finalTiktokInvRaw = shouldSwapInv ? rawSheinInv : rawTiktokInv;
-    const finalSheinInvRaw = shouldSwapInv ? rawTiktokInv : rawSheinInv;
-    const finalTiktokOrdersRaw = shouldSwapOrders ? rawSheinOrders : rawTiktokOrders;
-    const finalSheinOrdersRaw = shouldSwapOrders ? rawTiktokOrders : rawSheinOrders;
+    const finalTiktokInvRaw = shouldSwapInv ? rawSheinInvArr : rawTiktokInvArr;
+    const finalSheinInvRaw = shouldSwapInv ? rawTiktokInvArr : rawSheinInvArr;
+    const finalTiktokOrdersRaw = shouldSwapOrders ? rawSheinOrdersArr : rawTiktokOrdersArr;
+    const finalSheinOrdersRaw = shouldSwapOrders ? rawTiktokOrdersArr : rawSheinOrdersArr;
 
-    tiktokInv = normalizeInventory(finalTiktokInvRaw, 'TIKTOK');
-    sheinInv = normalizeInventory(finalSheinInvRaw, 'SHEIN');
-    tiktokSales = normalizeOrders(finalTiktokOrdersRaw, 'TIKTOK');
-    sheinSales = normalizeOrders(finalSheinOrdersRaw, 'SHEIN');
+    let tiktokInv = normalizeInventory(finalTiktokInvRaw, 'TIKTOK');
+    let sheinInv = normalizeInventory(finalSheinInvRaw, 'SHEIN');
+    let tiktokSales = normalizeOrders(finalTiktokOrdersRaw, 'TIKTOK');
+    let sheinSales = normalizeOrders(finalSheinOrdersRaw, 'SHEIN');
 
-    anySuccess = tiktokInv.length > 0 || sheinInv.length > 0;
+    const anySuccess = tiktokInv.length > 0 || sheinInv.length > 0;
     if (tiktokSales.length > 0) setHasTiktokData(true);
 
     console.log('[YM] inv swap?', shouldSwapInv, 'orders swap?', shouldSwapOrders);
@@ -389,15 +378,36 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (!s.Fecha) return true;
       const d = new Date(s.Fecha + 'T12:00:00');
       if (dateRange.from && d < dateRange.from) return false;
-      if (dateRange.to   && d > dateRange.to)   return false;
+      if (dateRange.to && d > dateRange.to) return false;
       return true;
     });
   }, [dateRange]);
 
   const { inventory, sales } = (() => {
     switch (marketplace) {
-      case 'SHEIN':    return { inventory: rawSheinInv,  sales: filterByDate(rawSheinSales) };
+      case 'SHEIN':    return { inventory: rawSheinInv, sales: filterByDate(rawSheinSales) };
       case 'TIKTOK':   return { inventory: rawTiktokInv, sales: filterByDate(rawTiktokSales) };
       case 'COMBINADO':
         return {
           inventory: mergeInventory([...rawSheinInv, ...rawTiktokInv]),
+          sales: filterByDate([...rawSheinSales, ...rawTiktokSales]),
+        };
+    }
+  })();
+
+  return (
+    <DataContext.Provider value={{
+      inventory, sales, marketplace, setMarketplace,
+      dateRange, setDateRange, loading, error, usingDemo,
+      refreshData: fetchData,
+    }}>
+      {children}
+    </DataContext.Provider>
+  );
+}
+
+export function useData() {
+  const ctx = useContext(DataContext);
+  if (!ctx) throw new Error('useData must be inside DataProvider');
+  return ctx;
+}
