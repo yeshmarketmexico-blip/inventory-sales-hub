@@ -1,37 +1,3 @@
-import { useState, useEffect, useCallback, createContext, useContext, ReactNode } from 'react';
-
-export type Marketplace = 'SHEIN' | 'TIKTOK' | 'COMBINADO';
-export interface DateRange { from: Date | undefined; to: Date | undefined; }
-
-export interface InventoryItem {
-  SKU: string; Producto: string; Stock: number;
-  PrecioCompra: number; PrecioVenta: number; Categoria: string;
-  PuntoReorden: number; Marketplace: string; MargenPct: number;
-  GananciaUnit: number; ValorTotal: number; Estado: string;
-  [key: string]: string | number;
-}
-
-export interface SaleItem {
-  IDOrden: string; SKU: string; Producto: string; Cantidad: number;
-  PrecioVenta: number; Total: number; Costo: number;
-  Utilidad: number; Margen: number; Fecha: string;
-  Marketplace: string; Estado: string;
-  [key: string]: string | number;
-}
-
-interface DataContextType {
-  marketplace: Marketplace; setMarketplace: (m: Marketplace) => void;
-  dateRange: DateRange; setDateRange: (r: DateRange) => void;
-  inventory: InventoryItem[]; sales: SaleItem[];
-  loading: boolean; error: string | null; usingDemo: boolean;
-  refreshData: () => void;
-  hasTiktokData: boolean;
-}
-
-const DataContext = createContext<DataContextType | null>(null);
-
-// ─────────────────────────────────────────────────────────────
-// ENDPOINTS (verificados con PowerShell)
 // URL_A → 839 filas, Estado: COMPLETED/DELIVERED  → TikTok
 // URL_B → 287 filas, Estado: 🚚 Enviada           → SHEIN
 // ─────────────────────────────────────────────────────────────
@@ -59,16 +25,62 @@ function parseNum(v: any): number {
   if (v === null || v === undefined || v === '' || v === 'PENDIENTE') return 0;
   if (typeof v === 'number') return v;
   return parseFloat(String(v).replace(/[$,\s]/g, '')) || 0;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+
+  const raw = String(v).trim();
+  if (!raw) return 0;
+
+  const cleaned = raw.replace(/[^\d,.-]/g, '');
+  if (!cleaned) return 0;
+
+  const hasComma = cleaned.includes(',');
+  const hasDot = cleaned.includes('.');
+
+  let normalized = cleaned;
+  if (hasComma && hasDot) {
+    const lastComma = cleaned.lastIndexOf(',');
+    const lastDot = cleaned.lastIndexOf('.');
+    const decimalSep = lastComma > lastDot ? ',' : '.';
+    const thousandSep = decimalSep === ',' ? '.' : ',';
+    normalized = cleaned.split(thousandSep).join('');
+    if (decimalSep === ',') normalized = normalized.replace(/,/g, '.');
+  } else if (hasComma && !hasDot) {
+    normalized = cleaned.replace(/,/g, '.');
+  }
+
+  return parseFloat(normalized) || 0;
+}
+
+function normalizeText(v: any): string {
+  return String(v || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9_ ]+/g, ' ')
+    .trim();
+}
+
+function pickString(row: Record<string, any>, keys: string[]): string {
+  const value = pickValue(row, keys);
+  return value === undefined || value === null ? '' : String(value).trim();
 }
 
 function parseDate(v: any): string {
   if (!v) return '';
   const s = String(v);
+  const s = String(v).trim();
+
   // DD/MM/YYYY
   const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
+
+  // YYYY-MM-DD HH:mm:ss
+  const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T].*)?$/);
+  if (m2) return `${m2[1]}-${m2[2]}-${m2[3]}`;
+
   // ISO con T
   return s.split('T')[0];
+  return s.split('T')[0].split(' ')[0];
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -80,6 +92,8 @@ function normalizeInventory(raw: any[], mp: string): InventoryItem[] {
   return raw.filter(r => {
     const id     = String(r['ID Producto'] || '').trim();
     const nombre = String(r['Nombre'] || '').trim();
+    const id = pickString(r, ['ID Producto', 'ID Producto (SKU SHEIN)', 'ID Producto(SKU SHEIN)', 'ID']);
+    const nombre = pickString(r, ['Nombre', 'Producto (Nombre)', 'Producto']);
     return id && id !== 'TOTALES' && nombre && nombre !== 'TOTALES';
   }).map(r => {
     const stock      = parseNum(r['Stock']);
@@ -90,10 +104,21 @@ function normalizeInventory(raw: any[], mp: string): InventoryItem[] {
     const valorTotal = parseNum(r['Valor Total']) || stock * precio;
     const estado     = String(r['Estado'] || (stock === 0 ? '🔴 AGOTADO' : stock < 10 ? '🟡 BAJO' : '🟢 OK'));
     const skuRaw = String(r['SKU'] ?? r['ID Producto'] ?? '').trim();
+    const stock = parseNum(pickValue(r, ['Stock', 'Stock Actual']));
+    const precio = parseNum(pickValue(r, ['Precio MXN', 'Precio']));
+    const costo = parseNum(pickValue(r, ['✏️ Costo Unitario', 'Costo Unitario', 'Costo']));
+    const margen = parseNum(pickValue(r, ['Margen %', 'Margen']));
+    const ganancia = parseNum(pickValue(r, ['Ganancia Unit.', 'Ganancia Unit', 'Ganancia']));
+    const valorTotal = parseNum(pickValue(r, ['Valor Total'])) || stock * precio;
+    const estado = String(pickValue(r, ['Estado']) || (stock === 0 ? '🔴 AGOTADO' : stock < 10 ? '🟡 BAJO' : '🟢 OK'));
+    const skuRaw = pickString(r, ['SKU', 'SKU Interno', 'ID Producto', 'ID Producto (SKU SHEIN)']);
+    const producto = pickString(r, ['Nombre', 'Producto (Nombre)', 'Producto']);
     return {
       SKU: skuRaw, Producto: String(r['Nombre'] || ''),
+      SKU: skuRaw, Producto: producto,
       Stock: stock, PrecioCompra: costo, PrecioVenta: precio,
       Categoria: inferCategoria(String(r['Nombre'] || '')),
+      Categoria: inferCategoria(producto),
       PuntoReorden: 5, Marketplace: mp, MargenPct: margen,
       GananciaUnit: ganancia, ValorTotal: valorTotal, Estado: estado,
     };
@@ -110,15 +135,32 @@ function isVenta(estado: string): boolean {
   if (s === 'COMPLETED' || s === 'DELIVERED') return true;
   if (s.includes('ENTREGADA') || s.includes('ENVIADA') || s.includes('EN CAMINO')) return true;
   return false;
+  const s = normalizeText(estado);
+  const directStates = new Set(['COMPLETED', 'DELIVERED', 'SHIPPED']);
+  if (directStates.has(s)) return true;
+  return s.includes('ENTREGADA') || s.includes('ENVIADA');
+}
+
+function pickValue(row: Record<string, any>, keys: string[]): any {
+  for (const key of keys) {
+    if (row[key] !== undefined && row[key] !== null && row[key] !== '') return row[key];
+  }
+  return undefined;
 }
 
 function normalizeOrders(raw: any[], mp: string): SaleItem[] {
   if (!Array.isArray(raw)) return [];
+
+  const dedup = new Set<string>();
   return raw
     .filter(r => {
       if (!r['ID Orden']) return false;
+      const orderId = pickString(r, ['ID Orden', 'Order ID', 'ID']);
+      if (!orderId) return false;
       if (!isVenta(String(r['Estado'] || ''))) return false;
       return parseNum(r['💚 LIQUIDACION']) > 0;
+      const liq = parseNum(pickValue(r, ['💚 LIQUIDACION', '💚 Liquidación', 'Liquidación', 'Liquidacion', 'Total']));
+      return liq > 0;
     })
     .map(r => {
       const liq     = parseNum(r['💚 LIQUIDACION']);
@@ -128,14 +170,32 @@ function normalizeOrders(raw: any[], mp: string): SaleItem[] {
       const qty     = Math.max(1, parseNum(r['Cantidad']));
       const producto = String(r['Producto (Nombre)'] || r['Producto'] || '');
       const sku      = String(r['SKU Interno'] || r['SKU'] || r['SKU ID'] || '');
+      const liq = parseNum(pickValue(r, ['💚 LIQUIDACION', '💚 Liquidación', 'Liquidación', 'Liquidacion', 'Total']));
+      const costo = parseNum(pickValue(r, ['Costo Mercancía', 'Costo Mercancia', 'Costo']));
+      const util = parseNum(pickValue(r, ['💰 UTILIDAD REAL', 'Utilidad Real', 'Utilidad'])) || (liq - costo);
+      const margen = parseNum(pickValue(r, ['Margen %', 'Margen'])) || (liq > 0 ? (util / liq) * 100 : 0);
+      const qty = Math.max(1, parseNum(pickValue(r, ['Cantidad', 'Qty', 'QTY'])));
+      const producto = pickString(r, ['Producto (Nombre)', 'Producto', 'Nombre']);
+      const sku = pickString(r, ['SKU Interno', 'SKU', 'SKU ID']);
+      const fecha = parseDate(r['Fecha']);
+      const idOrden = pickString(r, ['ID Orden', 'Order ID', 'ID']);
       return {
         IDOrden: String(r['ID Orden']), SKU: sku, Producto: producto,
+        IDOrden: idOrden, SKU: sku, Producto: producto,
         Cantidad: qty, PrecioVenta: liq, Total: liq, Costo: costo,
         Utilidad: util, Margen: margen, Fecha: parseDate(r['Fecha']),
+        Utilidad: util, Margen: margen, Fecha: fecha,
         Marketplace: mp, Estado: String(r['Estado'] || ''),
       };
     })
     .filter(s => s.Total > 0);
+    .filter(sale => {
+      if (sale.Total <= 0) return false;
+      const key = `${sale.IDOrden}|${sale.SKU}|${sale.Fecha}`;
+      if (dedup.has(key)) return false;
+      dedup.add(key);
+      return true;
+    });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -161,27 +221,7 @@ function generateDemoInventory(mp: string): InventoryItem[] {
     { SKU:'783214469800', Producto:'Tapete Yoga 4MM Verde Agua', Stock:41, PrecioCompra:42, PrecioVenta:99, Categoria:'Yoga & Fitness', PuntoReorden:5, Marketplace:mp, MargenPct:57.6, GananciaUnit:57, ValorTotal:4059, Estado:'🟢 OK' },
     { SKU:'664554605250', Producto:'Tapete Yoga 4MM Rosa', Stock:75, PrecioCompra:42, PrecioVenta:99, Categoria:'Yoga & Fitness', PuntoReorden:5, Marketplace:mp, MargenPct:57.6, GananciaUnit:57, ValorTotal:7425, Estado:'🟢 OK' },
     { SKU:'749460136637', Producto:'Papel Bond Blanco 500H Oficio', Stock:99, PrecioCompra:84, PrecioVenta:149, Categoria:'Papelería', PuntoReorden:5, Marketplace:mp, MargenPct:43.6, GananciaUnit:65, ValorTotal:14751, Estado:'🟢 OK' },
-    { SKU:'720595349444', Producto:'Mancuerna Kit 2 Pesas 7 Libras', Stock:3, PrecioCompra:110, PrecioVenta:249, Categoria:'Pesas', PuntoReorden:5, Marketplace:mp, MargenPct:55.8, GananciaUnit:139, ValorTotal:747, Estado:'🟡 BAJO' },
-    { SKU:'664554604536', Producto:'Caja Plástica 102 Lts Rosa', Stock:0, PrecioCompra:203, PrecioVenta:449, Categoria:'Almacenamiento', PuntoReorden:5, Marketplace:mp, MargenPct:54.8, GananciaUnit:246, ValorTotal:0, Estado:'🔴 AGOTADO' },
-  ];
-}
-
-function generateDemoSales(inventory: InventoryItem[], mp: string): SaleItem[] {
-  const sales: SaleItem[] = [];
-  for (let d = 0; d < 30; d++) {
-    const date = new Date(); date.setDate(date.getDate() - d);
-    const dateStr = date.toISOString().split('T')[0];
-    inventory.filter(i => i.Stock > 0).forEach(item => {
-      if (Math.random() > 0.6) {
-        const qty = Math.floor(Math.random() * 3) + 1;
-        const liq = qty * item.PrecioVenta * 0.85;
-        const cost = qty * item.PrecioCompra;
-        const util = liq - cost;
-        sales.push({ IDOrden: `DEMO-${d}-${item.SKU}`, SKU: item.SKU, Producto: item.Producto,
-          Cantidad: qty, PrecioVenta: liq, Total: liq, Costo: cost,
-          Utilidad: util, Margen: liq > 0 ? (util/liq)*100 : 0,
-          Fecha: dateStr, Marketplace: mp, Estado: 'COMPLETED' });
-      }
+@@ -185,102 +247,96 @@ function generateDemoSales(inventory: InventoryItem[], mp: string): SaleItem[] {
     });
   }
   return sales;
@@ -207,6 +247,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const fetchData = useCallback(async () => {
     setLoading(true); setError(null); setUsingDemo(false);
+    setHasTiktokData(false);
     let sheinInv: InventoryItem[] = [], tiktokInv: InventoryItem[] = [];
     let sheinSales: SaleItem[] = [], tiktokSales: SaleItem[] = [];
     let anySuccess = false;
@@ -284,27 +325,3 @@ export function DataProvider({ children }: { children: ReactNode }) {
       case 'COMBINADO':
         return {
           inventory: mergeInventory([...rawSheinInv, ...rawTiktokInv]),
-          sales: filterByDate([...rawSheinSales, ...rawTiktokSales].map(s => ({ ...s, Marketplace: 'COMBINADO' }))),
-        };
-    }
-  })();
-
-  return (
-    <DataContext.Provider value={{
-      marketplace, setMarketplace, dateRange, setDateRange,
-      inventory, sales, loading, error, usingDemo,
-      refreshData: fetchData, hasTiktokData,
-    }}>
-      {children}
-    </DataContext.Provider>
-  );
-}
-
-export function useSheetData() {
-  const ctx = useContext(DataContext);
-  if (!ctx) throw new Error('useSheetData must be used inside DataProvider');
-  return ctx;
-}
-
-// Alias para compatibilidad
-export const useData = useSheetData;
