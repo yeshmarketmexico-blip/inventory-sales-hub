@@ -131,8 +131,8 @@ export default function PurchasesPage() {
               </tr>
             </thead>
             <tbody>
-              {purchaseNeeds.map(item => (
-                <tr key={item.SKU + item.Marketplace}
+              {purchaseNeeds.map((item, idx) => (
+                <tr key={`${item.SKU}-${item.Marketplace}-${idx}`}
                   className="border-b border-border hover:bg-secondary/30 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs text-primary">{item.SKU || '—'}</td>
                   <td className="px-4 py-3 font-medium text-foreground max-w-xs truncate">{item.Producto}</td>
