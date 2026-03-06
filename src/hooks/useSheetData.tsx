@@ -89,8 +89,9 @@ function normalizeInventory(raw: any[], mp: string): InventoryItem[] {
     const ganancia   = parseNum(r['Ganancia Unit.']);
     const valorTotal = parseNum(r['Valor Total']) || stock * precio;
     const estado     = String(r['Estado'] || (stock === 0 ? '🔴 AGOTADO' : stock < 10 ? '🟡 BAJO' : '🟢 OK'));
+    const skuRaw = String(r['SKU'] ?? r['ID Producto'] ?? '').trim();
     return {
-      SKU: String(r['SKU'] ?? ''), Producto: String(r['Nombre'] || ''),
+      SKU: skuRaw, Producto: String(r['Nombre'] || ''),
       Stock: stock, PrecioCompra: costo, PrecioVenta: precio,
       Categoria: inferCategoria(String(r['Nombre'] || '')),
       PuntoReorden: 5, Marketplace: mp, MargenPct: margen,
