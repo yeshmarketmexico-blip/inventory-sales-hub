@@ -1,3 +1,4 @@
+@@ -35,129 +35,228 @@ const DataContext = createContext<DataContextType | null>(null);
 // URL_A → 839 filas, Estado: COMPLETED/DELIVERED  → TikTok
 // URL_B → 287 filas, Estado: 🚚 Enviada           → SHEIN
 // ─────────────────────────────────────────────────────────────
@@ -148,6 +149,43 @@ function pickValue(row: Record<string, any>, keys: string[]): any {
   return undefined;
 }
 
+function detectInventoryType(raw: any[]): 'SHEIN' | 'TIKTOK' | 'UNKNOWN' {
+  if (!Array.isArray(raw) || raw.length === 0) return 'UNKNOWN';
+
+  const sample = raw.slice(0, Math.min(15, raw.length));
+  let sheinScore = 0;
+  let tiktokScore = 0;
+
+  sample.forEach(r => {
+    if (r['SKU Interno'] || r['ID Producto (SKU SHEIN)']) sheinScore += 2;
+    if (r['SKU'] || r['ID Producto']) tiktokScore += 1;
+  });
+
+  if (sheinScore > tiktokScore) return 'SHEIN';
+  if (tiktokScore > sheinScore) return 'TIKTOK';
+  return 'UNKNOWN';
+}
+
+function detectOrdersType(raw: any[]): 'SHEIN' | 'TIKTOK' | 'UNKNOWN' {
+  if (!Array.isArray(raw) || raw.length === 0) return 'UNKNOWN';
+
+  const sample = raw.slice(0, Math.min(30, raw.length));
+  let sheinScore = 0;
+  let tiktokScore = 0;
+
+  sample.forEach(r => {
+    const estado = normalizeText(r['Estado']);
+    if (estado.includes('ENVIADA') || estado.includes('ENTREGADA')) sheinScore += 2;
+    if (estado === 'COMPLETED' || estado === 'DELIVERED' || estado === 'AWAITING_SHIPMENT' || estado === 'ON_HOLD' || estado === 'UNPAID') tiktokScore += 2;
+    if (r['SKU Interno']) sheinScore += 1;
+    if (r['SKU ID']) tiktokScore += 1;
+  });
+
+  if (sheinScore > tiktokScore) return 'SHEIN';
+  if (tiktokScore > sheinScore) return 'TIKTOK';
+  return 'UNKNOWN';
+}
+
 function normalizeOrders(raw: any[], mp: string): SaleItem[] {
   if (!Array.isArray(raw)) return [];
 
@@ -221,7 +259,7 @@ function generateDemoInventory(mp: string): InventoryItem[] {
     { SKU:'783214469800', Producto:'Tapete Yoga 4MM Verde Agua', Stock:41, PrecioCompra:42, PrecioVenta:99, Categoria:'Yoga & Fitness', PuntoReorden:5, Marketplace:mp, MargenPct:57.6, GananciaUnit:57, ValorTotal:4059, Estado:'🟢 OK' },
     { SKU:'664554605250', Producto:'Tapete Yoga 4MM Rosa', Stock:75, PrecioCompra:42, PrecioVenta:99, Categoria:'Yoga & Fitness', PuntoReorden:5, Marketplace:mp, MargenPct:57.6, GananciaUnit:57, ValorTotal:7425, Estado:'🟢 OK' },
     { SKU:'749460136637', Producto:'Papel Bond Blanco 500H Oficio', Stock:99, PrecioCompra:84, PrecioVenta:149, Categoria:'Papelería', PuntoReorden:5, Marketplace:mp, MargenPct:43.6, GananciaUnit:65, ValorTotal:14751, Estado:'🟢 OK' },
-@@ -185,102 +247,96 @@ function generateDemoSales(inventory: InventoryItem[], mp: string): SaleItem[] {
+@@ -185,102 +284,121 @@ function generateDemoSales(inventory: InventoryItem[], mp: string): SaleItem[] {
     });
   }
   return sales;
@@ -252,12 +290,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     let sheinSales: SaleItem[] = [], tiktokSales: SaleItem[] = [];
     let anySuccess = false;
 
+    let rawTiktokInv: any[] = [];
+    let rawSheinInv: any[] = [];
+    let rawTiktokOrders: any[] = [];
+    let rawSheinOrders: any[] = [];
+
     try {
       const r = await fetch(`${TIKTOK_BASE}?action=inventario`);
       const d = await r.json();
       tiktokInv = normalizeInventory(Array.isArray(d) ? d : (d.data || []), 'TIKTOK');
       if (tiktokInv.length > 0) anySuccess = true;
       console.log('[YM] TikTok inv:', tiktokInv.length);
+      rawTiktokInv = Array.isArray(d) ? d : (d.data || []);
+      console.log('[YM] TikTok inv raw:', rawTiktokInv.length);
     } catch(e) { console.warn('[YM] TikTok inv error:', e); }
 
     try {
@@ -267,6 +312,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       tiktokSales = normalizeOrders(raw, 'TIKTOK');
       if (tiktokSales.length > 0) setHasTiktokData(true);
       console.log('[YM] TikTok órdenes raw:', raw.length, '→ ventas:', tiktokSales.length);
+      rawTiktokOrders = Array.isArray(d) ? d : (d.data || []);
+      console.log('[YM] TikTok órdenes raw:', rawTiktokOrders.length);
     } catch(e) { console.warn('[YM] TikTok ordenes error:', e); }
 
     try {
@@ -275,6 +322,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       sheinInv = normalizeInventory(Array.isArray(d) ? d : (d.data || []), 'SHEIN');
       if (sheinInv.length > 0) anySuccess = true;
       console.log('[YM] SHEIN inv:', sheinInv.length);
+      rawSheinInv = Array.isArray(d) ? d : (d.data || []);
+      console.log('[YM] SHEIN inv raw:', rawSheinInv.length);
     } catch(e) { console.warn('[YM] SHEIN inv error:', e); }
 
     try {
@@ -283,7 +332,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const raw = Array.isArray(d) ? d : (d.data || []);
       sheinSales = normalizeOrders(raw, 'SHEIN');
       console.log('[YM] SHEIN órdenes raw:', raw.length, '→ ventas:', sheinSales.length);
+      rawSheinOrders = Array.isArray(d) ? d : (d.data || []);
+      console.log('[YM] SHEIN órdenes raw:', rawSheinOrders.length);
     } catch(e) { console.warn('[YM] SHEIN ordenes error:', e); }
+
+    const tiktokInvType = detectInventoryType(rawTiktokInv);
+    const sheinInvType = detectInventoryType(rawSheinInv);
+    const tiktokOrdersType = detectOrdersType(rawTiktokOrders);
+    const sheinOrdersType = detectOrdersType(rawSheinOrders);
+
+    const shouldSwapInv = tiktokInvType === 'SHEIN' && sheinInvType === 'TIKTOK';
+    const shouldSwapOrders = tiktokOrdersType === 'SHEIN' && sheinOrdersType === 'TIKTOK';
+
+    const finalTiktokInvRaw = shouldSwapInv ? rawSheinInv : rawTiktokInv;
+    const finalSheinInvRaw = shouldSwapInv ? rawTiktokInv : rawSheinInv;
+    const finalTiktokOrdersRaw = shouldSwapOrders ? rawSheinOrders : rawTiktokOrders;
+    const finalSheinOrdersRaw = shouldSwapOrders ? rawTiktokOrders : rawSheinOrders;
+
+    tiktokInv = normalizeInventory(finalTiktokInvRaw, 'TIKTOK');
+    sheinInv = normalizeInventory(finalSheinInvRaw, 'SHEIN');
+    tiktokSales = normalizeOrders(finalTiktokOrdersRaw, 'TIKTOK');
+    sheinSales = normalizeOrders(finalSheinOrdersRaw, 'SHEIN');
+
+    anySuccess = tiktokInv.length > 0 || sheinInv.length > 0;
+    if (tiktokSales.length > 0) setHasTiktokData(true);
+
+    console.log('[YM] inv swap?', shouldSwapInv, 'orders swap?', shouldSwapOrders);
+    console.log('[YM] final inv → TikTok:', tiktokInv.length, 'SHEIN:', sheinInv.length);
+    console.log('[YM] final ord → TikTok:', tiktokSales.length, 'SHEIN:', sheinSales.length);
 
     if (!anySuccess) {
       const dS = generateDemoInventory('SHEIN'), dT = generateDemoInventory('TIKTOK');
