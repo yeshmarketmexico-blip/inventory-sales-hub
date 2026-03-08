@@ -146,16 +146,27 @@ function isVenta(estado: string): boolean {
   return s.includes('ENTREGADA') || s.includes('ENVIADA') || s.includes('EN CAMINO');
 }
 
-// Build lookup: ID Producto → SKU (numeric) from raw inventory data
-function buildIdToSkuMap(rawInv: any[]): Map<string, string> {
+// Build comprehensive lookup: ANY identifier → canonical SKU
+function buildAllIdsMap(...rawInvArrays: any[][]): Map<string, string> {
   const map = new Map<string, string>();
-  if (!Array.isArray(rawInv)) return map;
-  rawInv.forEach(r => {
-    const idProducto = pickString(r, ['ID Producto', 'ID Producto (SKU SHEIN)', 'ID Producto(SKU SHEIN)']);
-    const sku = pickString(r, ['SKU', 'SKU Interno']);
-    if (idProducto && sku) {
-      map.set(String(idProducto), String(sku));
-    }
+  rawInvArrays.forEach(rawInv => {
+    if (!Array.isArray(rawInv)) return;
+    rawInv.forEach(r => {
+      const canonicalSku = pickString(r, ['SKU', 'SKU Interno', 'ID Producto', 'ID Producto (SKU SHEIN)']);
+      if (!canonicalSku || canonicalSku === 'TOTALES') return;
+      // Map every possible identifier to this canonical SKU
+      const ids = [
+        pickString(r, ['ID Producto']),
+        pickString(r, ['ID Producto (SKU SHEIN)', 'ID Producto(SKU SHEIN)']),
+        pickString(r, ['SKU']),
+        pickString(r, ['SKU Interno']),
+      ];
+      ids.forEach(id => {
+        if (id && !isInvalidSku(id)) {
+          map.set(id, canonicalSku);
+        }
+      });
+    });
   });
   return map;
 }
