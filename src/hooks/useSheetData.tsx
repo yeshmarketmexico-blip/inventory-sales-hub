@@ -146,16 +146,27 @@ function isVenta(estado: string): boolean {
   return s.includes('ENTREGADA') || s.includes('ENVIADA') || s.includes('EN CAMINO');
 }
 
-// Build lookup: ID Producto → SKU (numeric) from raw inventory data
-function buildIdToSkuMap(rawInv: any[]): Map<string, string> {
+// Build comprehensive lookup: ANY identifier → canonical SKU
+function buildAllIdsMap(...rawInvArrays: any[][]): Map<string, string> {
   const map = new Map<string, string>();
-  if (!Array.isArray(rawInv)) return map;
-  rawInv.forEach(r => {
-    const idProducto = pickString(r, ['ID Producto', 'ID Producto (SKU SHEIN)', 'ID Producto(SKU SHEIN)']);
-    const sku = pickString(r, ['SKU', 'SKU Interno']);
-    if (idProducto && sku) {
-      map.set(String(idProducto), String(sku));
-    }
+  rawInvArrays.forEach(rawInv => {
+    if (!Array.isArray(rawInv)) return;
+    rawInv.forEach(r => {
+      const canonicalSku = pickString(r, ['SKU', 'SKU Interno', 'ID Producto', 'ID Producto (SKU SHEIN)']);
+      if (!canonicalSku || canonicalSku === 'TOTALES') return;
+      // Map every possible identifier to this canonical SKU
+      const ids = [
+        pickString(r, ['ID Producto']),
+        pickString(r, ['ID Producto (SKU SHEIN)', 'ID Producto(SKU SHEIN)']),
+        pickString(r, ['SKU']),
+        pickString(r, ['SKU Interno']),
+      ];
+      ids.forEach(id => {
+        if (id && !isInvalidSku(id)) {
+          map.set(id, canonicalSku);
+        }
+      });
+    });
   });
   return map;
 }
@@ -166,7 +177,7 @@ function isInvalidSku(sku: string): boolean {
   return lower === '0' || lower === 'predeterminado' || lower === 'por defecto' || lower === 'default';
 }
 
-function normalizeOrders(raw: any[], mp: string, idToSkuMap?: Map<string, string>): SaleItem[] {
+function normalizeOrders(raw: any[], mp: string, idMap?: Map<string, string>): SaleItem[] {
   if (!Array.isArray(raw)) return [];
   const dedup = new Set<string>();
   return raw
@@ -187,19 +198,22 @@ function normalizeOrders(raw: any[], mp: string, idToSkuMap?: Map<string, string
       const fecha = parseDate(pickValue(r, ['Fecha']));
       const idOrden = pickString(r, ['ID Orden', 'Order ID', 'ID']);
 
-      // SKU resolution: try SKU Interno first, then SKU, then resolve SKU ID via inventory map
-      let sku = pickString(r, ['SKU Interno']);
-      if (isInvalidSku(sku)) {
-        sku = pickString(r, ['SKU']);
+      // Try ALL identifiers from the order row against the comprehensive map
+      const candidates = [
+        pickString(r, ['SKU Interno']),
+        pickString(r, ['SKU']),
+        pickString(r, ['SKU ID']),
+        pickString(r, ['ID Producto (SKU SHEIN)', 'ID Producto(SKU SHEIN)']),
+        pickString(r, ['ID Producto']),
+      ];
+      let sku = '';
+      for (const c of candidates) {
+        if (!c || isInvalidSku(c)) continue;
+        if (idMap && idMap.has(c)) { sku = idMap.get(c)!; break; }
+        if (!sku) sku = c; // keep first valid as fallback
       }
-      if (isInvalidSku(sku)) {
-        const skuId = pickString(r, ['SKU ID']);
-        if (skuId && idToSkuMap) {
-          sku = idToSkuMap.get(String(skuId)) || skuId;
-        } else if (skuId) {
-          sku = skuId;
-        }
-      }
+      // If fallback sku exists but wasn't resolved, try map one more time
+      if (sku && idMap && idMap.has(sku)) sku = idMap.get(sku)!;
 
       return {
         IDOrden: idOrden, SKU: sku, Producto: producto,
@@ -372,14 +386,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const finalTiktokOrdersRaw = shouldSwapOrders ? rawSheinOrdersArr : rawTiktokOrdersArr;
     const finalSheinOrdersRaw = shouldSwapOrders ? rawTiktokOrdersArr : rawSheinOrdersArr;
 
-    // Build ID→SKU maps for resolving order SKUs
-    const tiktokIdMap = buildIdToSkuMap(finalTiktokInvRaw);
-    const sheinIdMap = buildIdToSkuMap(finalSheinInvRaw);
+    // Build comprehensive ID→SKU maps from BOTH inventories
+    const allIdsMap = buildAllIdsMap(finalTiktokInvRaw, finalSheinInvRaw);
 
     let tiktokInv = normalizeInventory(finalTiktokInvRaw, 'TIKTOK');
     let sheinInv = normalizeInventory(finalSheinInvRaw, 'SHEIN');
-    let tiktokSales = normalizeOrders(finalTiktokOrdersRaw, 'TIKTOK', tiktokIdMap);
-    let sheinSales = normalizeOrders(finalSheinOrdersRaw, 'SHEIN', sheinIdMap);
+    let tiktokSales = normalizeOrders(finalTiktokOrdersRaw, 'TIKTOK', allIdsMap);
+    let sheinSales = normalizeOrders(finalSheinOrdersRaw, 'SHEIN', allIdsMap);
+
+    console.log('[YM] allIdsMap size:', allIdsMap.size);
+    console.log('[YM] sample sales SKUs TikTok:', tiktokSales.slice(0, 5).map(s => s.SKU));
+    console.log('[YM] sample sales SKUs SHEIN:', sheinSales.slice(0, 5).map(s => s.SKU));
+    console.log('[YM] sample inv SKUs TikTok:', tiktokInv.slice(0, 5).map(i => i.SKU));
+    console.log('[YM] sample inv SKUs SHEIN:', sheinInv.slice(0, 5).map(i => i.SKU));
 
     const anySuccess = tiktokInv.length > 0 || sheinInv.length > 0;
     if (tiktokSales.length > 0) setHasTiktokData(true);
