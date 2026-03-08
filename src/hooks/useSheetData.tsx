@@ -177,7 +177,7 @@ function isInvalidSku(sku: string): boolean {
   return lower === '0' || lower === 'predeterminado' || lower === 'por defecto' || lower === 'default';
 }
 
-function normalizeOrders(raw: any[], mp: string, idToSkuMap?: Map<string, string>): SaleItem[] {
+function normalizeOrders(raw: any[], mp: string, idMap?: Map<string, string>): SaleItem[] {
   if (!Array.isArray(raw)) return [];
   const dedup = new Set<string>();
   return raw
@@ -198,19 +198,22 @@ function normalizeOrders(raw: any[], mp: string, idToSkuMap?: Map<string, string
       const fecha = parseDate(pickValue(r, ['Fecha']));
       const idOrden = pickString(r, ['ID Orden', 'Order ID', 'ID']);
 
-      // SKU resolution: try SKU Interno first, then SKU, then resolve SKU ID via inventory map
-      let sku = pickString(r, ['SKU Interno']);
-      if (isInvalidSku(sku)) {
-        sku = pickString(r, ['SKU']);
+      // Try ALL identifiers from the order row against the comprehensive map
+      const candidates = [
+        pickString(r, ['SKU Interno']),
+        pickString(r, ['SKU']),
+        pickString(r, ['SKU ID']),
+        pickString(r, ['ID Producto (SKU SHEIN)', 'ID Producto(SKU SHEIN)']),
+        pickString(r, ['ID Producto']),
+      ];
+      let sku = '';
+      for (const c of candidates) {
+        if (!c || isInvalidSku(c)) continue;
+        if (idMap && idMap.has(c)) { sku = idMap.get(c)!; break; }
+        if (!sku) sku = c; // keep first valid as fallback
       }
-      if (isInvalidSku(sku)) {
-        const skuId = pickString(r, ['SKU ID']);
-        if (skuId && idToSkuMap) {
-          sku = idToSkuMap.get(String(skuId)) || skuId;
-        } else if (skuId) {
-          sku = skuId;
-        }
-      }
+      // If fallback sku exists but wasn't resolved, try map one more time
+      if (sku && idMap && idMap.has(sku)) sku = idMap.get(sku)!;
 
       return {
         IDOrden: idOrden, SKU: sku, Producto: producto,
