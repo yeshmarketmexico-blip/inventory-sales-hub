@@ -386,14 +386,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const finalTiktokOrdersRaw = shouldSwapOrders ? rawSheinOrdersArr : rawTiktokOrdersArr;
     const finalSheinOrdersRaw = shouldSwapOrders ? rawTiktokOrdersArr : rawSheinOrdersArr;
 
-    // Build ID→SKU maps for resolving order SKUs
-    const tiktokIdMap = buildIdToSkuMap(finalTiktokInvRaw);
-    const sheinIdMap = buildIdToSkuMap(finalSheinInvRaw);
+    // Build comprehensive ID→SKU maps from BOTH inventories
+    const allIdsMap = buildAllIdsMap(finalTiktokInvRaw, finalSheinInvRaw);
 
     let tiktokInv = normalizeInventory(finalTiktokInvRaw, 'TIKTOK');
     let sheinInv = normalizeInventory(finalSheinInvRaw, 'SHEIN');
-    let tiktokSales = normalizeOrders(finalTiktokOrdersRaw, 'TIKTOK', tiktokIdMap);
-    let sheinSales = normalizeOrders(finalSheinOrdersRaw, 'SHEIN', sheinIdMap);
+    let tiktokSales = normalizeOrders(finalTiktokOrdersRaw, 'TIKTOK', allIdsMap);
+    let sheinSales = normalizeOrders(finalSheinOrdersRaw, 'SHEIN', allIdsMap);
+
+    console.log('[YM] allIdsMap size:', allIdsMap.size);
+    console.log('[YM] sample sales SKUs TikTok:', tiktokSales.slice(0, 5).map(s => s.SKU));
+    console.log('[YM] sample sales SKUs SHEIN:', sheinSales.slice(0, 5).map(s => s.SKU));
+    console.log('[YM] sample inv SKUs TikTok:', tiktokInv.slice(0, 5).map(i => i.SKU));
+    console.log('[YM] sample inv SKUs SHEIN:', sheinInv.slice(0, 5).map(i => i.SKU));
 
     const anySuccess = tiktokInv.length > 0 || sheinInv.length > 0;
     if (tiktokSales.length > 0) setHasTiktokData(true);
